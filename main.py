@@ -6,9 +6,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 
 load_dotenv()
@@ -27,7 +30,6 @@ LOVEABLE_ORIGIN = os.getenv("LOVEABLE_ORIGIN") or ""  # например: https:
 CORS_ALLOW_ALL = (os.getenv("CORS_ALLOW_ALL") or "").lower() in ("1", "true", "yes")
 
 
-
 # Check required env vars
 missing: List[str] = []
 for k, v in [
@@ -43,6 +45,22 @@ if missing:
 
 # Создаем экземпляр FastAPI с нашим названием
 app = FastAPI(title="Langflow FastAPI Proxy")
+
+limiter = Limiter(
+    key_func=lambda request: request.client.host if request.client else "unknown"
+)
+
+app.state.limiter = limiter
+app.add_exception_handler(
+    RateLimitExceeded,
+    lambda request, exc: __import__(
+        "fastapi"
+    ).responses.JSONResponse(
+        status_code=429,
+        content={"detail": "Too many requests. Try again later."},
+    ),
+)
+app.add_middleware(SlowAPIMiddleware)
 
 allowed_origins = ["*"] if CORS_ALLOW_ALL else (
     [LOVEABLE_ORIGIN] if LOVEABLE_ORIGIN else []
@@ -175,8 +193,19 @@ async def health() -> Dict[str, str]:
 
 
 @app.post("/multiply")
-async def multiply(req: MultiplyRequest) -> Dict[str, Any]:
+@limiter.limit("5/minute")
+async def multiply(
+    request: Request,
+    req: MultiplyRequest,
+) -> Dict[str, Any]:
     start_time = time.perf_counter()
+
+
+    logger.warning(
+        "Rate limit diagnostic: client_host=%s",
+        request.client.host if request.client else "unknown",
+    )
+
 
     input_value = " * ".join(str(x) for x in req.numbers)
 
