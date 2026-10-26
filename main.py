@@ -26,7 +26,7 @@ LANGFLOW_INPUT_TYPE = os.getenv("LANGFLOW_INPUT_TYPE") or "chat"
 LANGFLOW_OUTPUT_TYPE = os.getenv("LANGFLOW_OUTPUT_TYPE") or "chat"
 
 # CORS config (для Lovable/браузера)
-LOVEABLE_ORIGIN = os.getenv("LOVEABLE_ORIGIN") or ""  # например: https://happy-multiply-box.lovable.app
+LOVEABLE_ORIGINS = os.getenv("LOVEABLE_ORIGINS") or ""
 CORS_ALLOW_ALL = (os.getenv("CORS_ALLOW_ALL") or "").lower() in ("1", "true", "yes")
 
 
@@ -62,8 +62,14 @@ app.add_exception_handler(
 )
 app.add_middleware(SlowAPIMiddleware)
 
-allowed_origins = ["*"] if CORS_ALLOW_ALL else (
-    [LOVEABLE_ORIGIN] if LOVEABLE_ORIGIN else []
+allowed_origins = (
+    ["*"]
+    if CORS_ALLOW_ALL
+    else [
+        origin.strip()
+        for origin in LOVEABLE_ORIGINS.split(",")
+        if origin.strip()
+    ]
 )
 
 app.add_middleware(
@@ -199,13 +205,6 @@ async def multiply(
     req: MultiplyRequest,
 ) -> Dict[str, Any]:
     start_time = time.perf_counter()
-
-
-    logger.warning(
-        "Rate limit diagnostic: client_host=%s",
-        request.client.host if request.client else "unknown",
-    )
-
 
     input_value = " * ".join(str(x) for x in req.numbers)
 
