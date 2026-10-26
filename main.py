@@ -6,6 +6,8 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from fastapi.middleware.cors import CORSMiddleware
+
 
 load_dotenv()
 
@@ -37,6 +39,18 @@ if missing:
 
 # Создаем экземпляр FastAPI с нашим названием
 app = FastAPI(title="Langflow FastAPI Proxy")
+
+allowed_origins = ["*"] if CORS_ALLOW_ALL else (
+    [LOVEABLE_ORIGIN] if LOVEABLE_ORIGIN else []
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 # trust_env=False is IMPORTANT: ignores HTTP(S)_PROXY which can break local calls
 client = httpx.AsyncClient(
