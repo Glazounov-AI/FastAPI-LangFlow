@@ -55,8 +55,13 @@ app.add_middleware(
 
 # trust_env=False is IMPORTANT: ignores HTTP(S)_PROXY which can break local calls
 client = httpx.AsyncClient(
-    timeout=httpx.Timeout(900.0),
-    trust_env=False
+    timeout=httpx.Timeout(
+        connect=10.0,
+        read=60.0,
+        write=10.0,
+        pool=10.0,
+    ),
+    trust_env=False,
 )
 
 # Pydantic models for request and response
