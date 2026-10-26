@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 from uuid import uuid4
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -11,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 LANGFLOW_URL = (os.getenv("LANGFLOW_URL") or "http://127.0.0.1:7860").rstrip("/")
 LANGFLOW_FLOW_ID = os.getenv("LANGFLOW_FLOW_ID") or ""
@@ -96,9 +99,6 @@ async def _run_langflow(input_value: str, session_id: str) -> Tuple[Dict[str, An
         "tweaks": None,
     }
 
-    last_status: Optional[int] = None
-    last_text: Optional[str] = None
-
     for auth in _make_auth_headers():
         headers = {
             "Content-Type": "application/json",
@@ -108,42 +108,60 @@ async def _run_langflow(input_value: str, session_id: str) -> Tuple[Dict[str, An
 
         try:
             r = await client.post(url, json=payload, headers=headers)
-            last_status = r.status_code
-            last_text = r.text
 
-            # если не подошёл способ авторизации — пробуем следующий
             if r.status_code in (401, 403):
+                logger.warning(
+                    "Langflow authentication rejected: HTTP %s",
+                    r.status_code,
+                )
                 continue
 
             r.raise_for_status()
-            return r.json(), ("bearer" if "Authorization" in auth else "x-api-key")
+
+            try:
+                response_data = r.json()
+            except ValueError:
+                logger.error("Langflow returned invalid JSON")
+                raise HTTPException(
+                    status_code=502,
+                    detail="Invalid Langflow response",
+                )
+
+            return response_data, (
+                "bearer" if "Authorization" in auth else "x-api-key"
+            )
+
+        except httpx.TimeoutException:
+            logger.warning("Langflow request timed out")
+            raise HTTPException(
+                status_code=504,
+                detail="Langflow response timeout",
+            )
 
         except httpx.HTTPStatusError as e:
-            # Langflow вернул 4xx/5xx — пробрасываем как есть
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=e.response.text,
-            ) from e
-
-        except httpx.ReadTimeout as e:
+            logger.error(
+                "Langflow returned HTTP %s",
+                e.response.status_code,
+            )
             raise HTTPException(
                 status_code=502,
-                detail=f"Langflow request error: ReadTimeout {repr(e)}",
-            ) from e
+                detail="Langflow processing error",
+            )
 
         except httpx.RequestError as e:
+            logger.error(
+                "Langflow connection failed: %s",
+                type(e).__name__,
+            )
             raise HTTPException(
                 status_code=502,
-                detail=f"Langflow request error: {type(e).__name__} {repr(e)}",
-            ) from e
+                detail="Langflow service unavailable",
+            )
 
-    # если оба способа auth дали 401/403
+    logger.error("Langflow authentication failed for all configured methods")
     raise HTTPException(
         status_code=502,
-        detail=(
-            "Langflow auth failed (tried Bearer and x-api-key). "
-            f"Last status={last_status}. Last response={last_text}"
-        ),
+        detail="Upstream authentication failed",
     )
 
 
