@@ -167,8 +167,6 @@ async def multiply(req: MultiplyRequest) -> Dict[str, Any]:
 
     return {
         "input": input_value,
-        "auth_used": auth_used,
         "result_text": _extract_text_from_langflow(resp_json),
         "processing_time_ms": processing_time_ms,
-        "raw": resp_json,
     }
