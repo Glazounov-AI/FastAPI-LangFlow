@@ -1,5 +1,6 @@
 import os
 import time
+from uuid import uuid4
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -158,7 +159,7 @@ async def multiply(req: MultiplyRequest) -> Dict[str, Any]:
 
     resp_json, auth_used = await _run_langflow(
         input_value=input_value,
-        session_id=req.session_id or "multiply-session",
+        session_id=req.session_id or str(uuid4()),
     )
 
     processing_time_ms = round(
